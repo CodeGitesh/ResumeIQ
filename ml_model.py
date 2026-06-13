@@ -55,7 +55,8 @@ def train_and_save_model():
     vectorizer = TfidfVectorizer(sublinear_tf=True, stop_words='english', max_features=1500)
     X = vectorizer.fit_transform(df['cleaned_resume'])
     
-    y = df['Category'].values
+    # Cast to list to prevent PyArrow ChunkedArray indexing errors on Streamlit Cloud
+    y = df['Category'].tolist()
     
     X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42, test_size=0.2, stratify=y)
     
