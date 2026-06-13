@@ -1,0 +1,190 @@
+"""
+analyzer.py - Core Logic for ResumeIQ
+Handles text extraction, formatting checks, skill matching, and ATS scoring.
+"""
+import re
+import fitz  # PyMuPDF
+from collections import Counter
+
+# Common tech and soft skills for basic extraction
+COMMON_SKILLS = {
+    "python", "java", "c++", "c#", "javascript", "typescript", "react", "angular", "vue",
+    "node.js", "express", "django", "flask", "fastapi", "spring boot", "ruby", "rails",
+    "php", "laravel", "go", "rust", "swift", "kotlin", "html", "css", "sql", "mysql",
+    "postgresql", "mongodb", "redis", "docker", "kubernetes", "aws", "azure", "gcp",
+    "git", "github", "gitlab", "linux", "bash", "jenkins", "ci/cd", "terraform", "agile",
+    "scrum", "machine learning", "data analysis", "artificial intelligence", "nlp",
+    "pandas", "numpy", "scikit-learn", "tensorflow", "pytorch", "tableau", "power bi",
+    "excel", "communication", "leadership", "problem solving", "teamwork"
+}
+
+def extract_text_from_pdf(pdf_path: str) -> str:
+    """Extracts raw text from a PDF document."""
+    try:
+        doc = fitz.open(pdf_path)
+        text = "\n".join([page.get_text() for page in doc])
+        return text
+    except Exception as e:
+        raise Exception(f"Error reading PDF: {str(e)}")
+
+def extract_contact_info(text: str) -> dict:
+    """Uses regex to find standard contact information."""
+    email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
+    phone_pattern = r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}'
+    linkedin_pattern = r'linkedin\.com/in/[a-zA-Z0-9-]+'
+    
+    emails = re.findall(email_pattern, text)
+    phones = re.findall(phone_pattern, text)
+    linkedins = re.findall(linkedin_pattern, text.lower())
+    
+    return {
+        "email": emails[0] if emails else None,
+        "phone": phones[0] if phones else None,
+        "linkedin": linkedins[0] if linkedins else None
+    }
+
+def extract_skills(text: str, custom_skill_list: list = None) -> list:
+    """Finds matching skills from the text based on a predefined list."""
+    text_lower = text.lower()
+    found_skills = set()
+    
+    skills_to_check = COMMON_SKILLS
+    if custom_skill_list:
+        skills_to_check = set([s.lower() for s in custom_skill_list])
+        
+    for skill in skills_to_check:
+        # Use word boundaries for exact matches
+        pattern = r'\b' + re.escape(skill) + r'\b'
+        if re.search(pattern, text_lower):
+            found_skills.add(skill.title())
+            
+    return list(found_skills)
+
+def check_formatting(text: str, pdf_path: str = None) -> list:
+    """
+    Checks for common formatting issues in the resume.
+    Returns a list of dicts: [{'issue': 'description', 'severity': 'high/medium/low'}]
+    """
+    issues = []
+    text_lower = text.lower()
+    
+    # 1. Contact Info check
+    contacts = extract_contact_info(text)
+    if not contacts["email"] and not contacts["phone"]:
+        issues.append({"issue": "Missing contact information (Email/Phone).", "severity": "high"})
+    if not contacts["linkedin"]:
+        issues.append({"issue": "No LinkedIn profile found. Recruiters expect this.", "severity": "medium"})
+        
+    # 2. Length check (Pages)
+    if pdf_path:
+        try:
+            doc = fitz.open(pdf_path)
+            if doc.page_count > 2:
+                issues.append({"issue": f"Resume is {doc.page_count} pages. Keep it to 1-2 pages.", "severity": "high"})
+        except: pass
+        
+    # 3. Missing Sections
+    if "experience" not in text_lower and "employment" not in text_lower and "work history" not in text_lower:
+        issues.append({"issue": "No 'Experience' section detected.", "severity": "high"})
+    if "education" not in text_lower:
+        issues.append({"issue": "No 'Education' section detected.", "severity": "high"})
+        
+    # 4. Action verbs / Metrics Check
+    action_verbs = ["achieved", "improved", "developed", "managed", "created", "led", "increased", "decreased", "resolved"]
+    found_verbs = [v for v in action_verbs if v in text_lower]
+    if len(found_verbs) < 3:
+        issues.append({"issue": "Low usage of strong action verbs (e.g., achieved, developed, led).", "severity": "medium"})
+        
+    numbers = re.findall(r'\b\d+%\b|\$\d+', text)
+    if len(numbers) < 2:
+        issues.append({"issue": "Lack of quantifiable metrics (%, $). Try to quantify your achievements.", "severity": "high"})
+        
+    return issues
+
+def compute_ats_score(resume_text: str, jd_text: str) -> dict:
+    """
+    Computes a basic rule-based ATS match score against a Job Description.
+    """
+    if not jd_text.strip():
+        return {"score": 0, "details": "No Job Description provided."}
+        
+    # 1. Skill Match
+    # Extract words from JD that look like skills (simple heuristic: common tech words)
+    jd_skills = extract_skills(jd_text)
+    resume_skills = extract_skills(resume_text)
+    
+    if not jd_skills:
+        return {"score": 50, "details": "Job Description is too short or doesn't list standard technical skills."}
+        
+    matched_skills = set([s.lower() for s in resume_skills]) & set([s.lower() for s in jd_skills])
+    missing_skills = set([s.lower() for s in jd_skills]) - set([s.lower() for s in resume_skills])
+    
+    skill_score = (len(matched_skills) / len(jd_skills)) * 100
+    
+    # 2. Keyword Density Match
+    # Check general important keywords (longer than 4 chars) from JD in Resume
+    jd_words = re.findall(r'\b[a-zA-Z]{5,}\b', jd_text.lower())
+    # Get top 20 most common words in JD to use as keywords
+    common_jd_words = [word for word, count in Counter(jd_words).most_common(20) if word not in ["their", "there", "about", "which", "would", "other"]]
+    
+    resume_words = set(re.findall(r'\b[a-zA-Z]{5,}\b', resume_text.lower()))
+    keyword_matches = [w for w in common_jd_words if w in resume_words]
+    
+    density_score = (len(keyword_matches) / len(common_jd_words)) * 100 if common_jd_words else 0
+    
+    # Final Score (Weighted average)
+    final_score = int((skill_score * 0.7) + (density_score * 0.3))
+    
+    return {
+        "score": min(final_score, 100),
+        "matched_skills": list(matched_skills),
+        "missing_skills": list(missing_skills),
+        "keyword_matches": keyword_matches
+    }
+
+def compute_general_score(text: str, issues: list, skills: list) -> dict:
+    """
+    Computes a general 'Resume Health' score out of 100 based on formatting,
+    completeness, and impact (metrics, action verbs).
+    """
+    score = 100
+    breakdown = []
+    
+    # 1. Formatting Deductions
+    for issue in issues:
+        if issue["severity"] == "high":
+            score -= 15
+            breakdown.append({"item": issue["issue"], "impact": -15})
+        elif issue["severity"] == "medium":
+            score -= 5
+            breakdown.append({"item": issue["issue"], "impact": -5})
+            
+    # 2. Skill Bonuses
+    if len(skills) > 15:
+        score += 5
+        breakdown.append({"item": "Excellent variety of skills listed", "impact": "+5"})
+    elif len(skills) == 0:
+        score -= 20
+        breakdown.append({"item": "No recognizable technical skills found", "impact": -20})
+        
+    # 3. Action Verbs & Metrics (Checking raw text for positive signals)
+    text_lower = text.lower()
+    action_verbs = ["achieved", "improved", "developed", "managed", "created", "led", "increased", "decreased", "resolved", "spearheaded", "architected", "optimized"]
+    found_verbs = [v for v in action_verbs if v in text_lower]
+    
+    if len(found_verbs) >= 5:
+        score += 10
+        breakdown.append({"item": "Strong usage of impactful action verbs", "impact": "+10"})
+        
+    numbers = re.findall(r'\b\d+%\b|\$\d+', text)
+    if len(numbers) >= 3:
+        score += 10
+        breakdown.append({"item": "Excellent use of quantified metrics (%, $)", "impact": "+10"})
+        
+    # Ensure score stays between 0 and 100
+    final_score = max(0, min(100, score))
+    
+    return {
+        "score": final_score,
+        "breakdown": breakdown
+    }

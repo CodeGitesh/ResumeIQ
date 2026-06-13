@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+env/
+
+# Data & Models (These are downloaded/generated dynamically)
+data/
+models/
+
+# macOS
+.DS_Store
