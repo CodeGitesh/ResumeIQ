@@ -51,7 +51,7 @@ def train_job_role_classifier() -> dict:
     Returns a dict with train/test accuracy.
     """
     print("=" * 70)
-    print("MODEL 1: Job Role Classifier (KNN)")
+    print("MODEL 1: Job Role Classifier (MultinomialNB)")
     print("=" * 70)
 
     # --- Download dataset with SSL bypass (macOS compatibility) -----------
@@ -84,19 +84,19 @@ def train_job_role_classifier() -> dict:
         X, y, test_size=0.2, random_state=42
     )
 
-    # --- Train KNN --------------------------------------------------------
-    knn = KNeighborsClassifier(n_neighbors=5)
-    knn.fit(X_train, y_train)
+    # --- Train MultinomialNB ----------------------------------------------
+    nb_clf = MultinomialNB()
+    nb_clf.fit(X_train, y_train)
 
-    train_acc = accuracy_score(y_train, knn.predict(X_train))
-    test_acc = accuracy_score(y_test, knn.predict(X_test))
+    train_acc = accuracy_score(y_train, nb_clf.predict(X_train))
+    test_acc = accuracy_score(y_test, nb_clf.predict(X_test))
     print(f"Train accuracy: {train_acc:.4f}")
     print(f"Test  accuracy: {test_acc:.4f}")
 
     # --- Save -------------------------------------------------------------
     os.makedirs("models", exist_ok=True)
     with open(os.path.join("models", "resume_classifier.pkl"), "wb") as f:
-        pickle.dump(knn, f)
+        pickle.dump(nb_clf, f)
     with open(os.path.join("models", "tfidf_vectorizer.pkl"), "wb") as f:
         pickle.dump(tfidf, f)
 

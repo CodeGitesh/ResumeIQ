@@ -1,5 +1,6 @@
 import pandas as pd
 import re
+import json
 from collections import defaultdict
 from nltk.stem import PorterStemmer
 
@@ -39,6 +40,10 @@ def build_inverted_index(csv_path: str):
 
     print(f"\nSuccessfully indexed {len(df)} documents.")
     print(f"Total unique terms in index: {len(inverted_index)}\n")
+    
+    with open("data/inverted_index.json", "w") as f:
+        json.dump(inverted_index, f)
+    print("Saved inverted index to data/inverted_index.json")
     
     # Print a sample of the inverted index
     print("="*50)

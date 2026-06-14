@@ -68,9 +68,24 @@ def recommend_jobs(resume_text: str, top_n: int = 10) -> list:
             "Good"      if final_score >= 50 else
             "Fair"
         )
+        
+        # Explainability: Matched vs Missing Skills
+        common_tech = ["python", "java", "c++", "c#", "sql", "aws", "docker", "kubernetes", 
+                       "react", "angular", "node", "javascript", "html", "css", "machine learning",
+                       "deep learning", "nlp", "django", "flask", "spring", "agile", "scrum", "git",
+                       "linux", "bash", "rest", "api", "mongodb", "mysql", "postgresql", "ruby"]
+        
+        job_desc_lower = str(job_match.get("description", "")).lower()
+        resume_lower = resume_text.lower()
+        
+        job_skills = [s for s in common_tech if s in job_desc_lower]
+        matched_skills = [s for s in job_skills if s in resume_lower]
+        missing_skills = [s for s in job_skills if s not in resume_lower]
 
         job_match["match_score"] = final_score
         job_match["match_label"] = match_label
+        job_match["matched_skills"] = matched_skills
+        job_match["missing_skills"] = missing_skills
         job_match["percentile"]  = corpus_pct
         job_match["raw_score"]   = round(raw, 5)
         job_match["pool_size"]   = len(nonzero_sims)

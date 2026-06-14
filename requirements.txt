@@ -10,4 +10,5 @@ wordcloud
 beautifulsoup4
 requests
 certifi
+rank-bm25
 nltk

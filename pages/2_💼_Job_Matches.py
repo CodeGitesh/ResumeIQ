@@ -73,12 +73,25 @@ else:
         st.info("No matching jobs found in the database.")
     else:
         for job in matches:
+            matched_html = "".join([f"<span style='background:#D1FAE5; color:#065F46; padding:2px 8px; border-radius:12px; font-size:12px; margin-right:4px;'>{s.capitalize()}</span>" for s in job.get('matched_skills', [])])
+            missing_html = "".join([f"<span style='background:#FEE2E2; color:#991B1B; padding:2px 8px; border-radius:12px; font-size:12px; margin-right:4px;'>{s.capitalize()}</span>" for s in job.get('missing_skills', [])])
+            
+            explainability_html = ""
+            if matched_html or missing_html:
+                explainability_html = "<div style='margin-bottom: 10px;'>"
+                if matched_html:
+                    explainability_html += f"<div style='margin-bottom: 4px;'><b>✅ Matched Skills:</b> {matched_html}</div>"
+                if missing_html:
+                    explainability_html += f"<div><b>❌ Missing Skills:</b> {missing_html}</div>"
+                explainability_html += "</div>"
+                
             st.markdown(f"""
             <div class='job-card'>
                 <div class='match-score'>{job['match_score']}% Match <span style='font-size: 14px; font-weight: normal; color: #64748B;'>({job.get('match_label', 'Good')})</span></div>
                 <h3 class='job-title'>{job['title']}</h3>
                 <h5 class='job-meta'>{job['company']} • {job['location']} • {job['salary']}</h5>
                 <p style='margin: 0 0 10px 0; font-size: 12px; font-weight: bold; color: #3B82F6;'>📊 P95 Scaled • Top {100 - job.get('percentile', 0)}% Match in Corpus</p>
+                {explainability_html}
                 <p class='job-desc'>{job['description']}</p>
             </div>
             """, unsafe_allow_html=True)
