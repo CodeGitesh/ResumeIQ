@@ -18,6 +18,18 @@ COMMON_SKILLS = {
     "excel", "communication", "leadership", "problem solving", "teamwork"
 }
 
+# Advanced Market Skills Knowledge Base
+MARKET_SKILLS = {
+    "Data Science": ["python", "sql", "machine learning", "pandas", "numpy", "scikit-learn", "tensorflow", "pytorch", "aws", "docker"],
+    "Java Developer": ["java", "spring boot", "sql", "hibernate", "microservices", "docker", "kubernetes", "aws", "git", "ci/cd"],
+    "Software Engineer": ["python", "java", "javascript", "c++", "sql", "git", "aws", "docker", "agile", "linux"],
+    "Web Designing": ["html", "css", "javascript", "react", "figma", "ui/ux", "bootstrap", "tailwind", "adobe xd"],
+    "HR": ["recruitment", "onboarding", "employee relations", "performance management", "communication", "human resources", "talent acquisition"],
+    "Mechanical Engineer": ["autocad", "solidworks", "matlab", "ansys", "manufacturing", "project management", "thermodynamics"],
+    "Sales": ["b2b", "crm", "salesforce", "communication", "negotiation", "lead generation", "account management"],
+    "Operations Manager": ["operations", "supply chain", "logistics", "agile", "six sigma", "project management", "leadership"]
+}
+
 def extract_text_from_pdf(pdf_path: str) -> str:
     """Extracts raw text from a PDF document."""
     try:
@@ -75,13 +87,36 @@ def check_formatting(text: str, pdf_path: str = None) -> list:
     if not contacts["linkedin"]:
         issues.append({"issue": "No LinkedIn profile found. Recruiters expect this.", "severity": "medium"})
         
-    # 2. Length check (Pages)
+    # 2. Length & Advanced Font Size Check (PyMuPDF dict extraction)
     if pdf_path:
         try:
             doc = fitz.open(pdf_path)
             if doc.page_count > 2:
-                issues.append({"issue": f"Resume is {doc.page_count} pages. Keep it to 1-2 pages.", "severity": "high"})
-        except: pass
+                issues.append({"issue": f"Resume is {doc.page_count} pages. Keep it to 1-2 pages maximum.", "severity": "high"})
+                
+            # Extract font sizes
+            font_sizes = []
+            for page in doc:
+                blocks = page.get_text("dict").get("blocks", [])
+                for b in blocks:
+                    if b.get("type") == 0:  # text block
+                        for l in b.get("lines", []):
+                            for s in l.get("spans", []):
+                                size = s.get("size")
+                                text_str = s.get("text", "").strip()
+                                # Only count meaningful text spans, ignore empty spaces
+                                if size and len(text_str) > 2:
+                                    font_sizes.append(size)
+            
+            if font_sizes:
+                # Find the most common font size (mode) which is likely the body text
+                body_font_size = Counter(font_sizes).most_common(1)[0][0]
+                if body_font_size < 10:
+                    issues.append({"issue": f"Body font size is approx {body_font_size:.1f}pt. This is too small for readability. Increase to 10pt-12pt.", "severity": "high"})
+                elif body_font_size > 12.5:
+                    issues.append({"issue": f"Body font size is approx {body_font_size:.1f}pt. This is unusually large and wastes space. Decrease to 10pt-12pt.", "severity": "medium"})
+        except Exception as e:
+            print(f"Font extraction error: {e}")
         
     # 3. Missing Sections
     if "experience" not in text_lower and "employment" not in text_lower and "work history" not in text_lower:
@@ -187,4 +222,22 @@ def compute_general_score(text: str, issues: list, skills: list) -> dict:
     return {
         "score": final_score,
         "breakdown": breakdown
+    }
+
+def get_market_skill_gaps(predicted_role: str, current_skills: list) -> dict:
+    """
+    Compares the user's skills against the MARKET_SKILLS dictionary to find missing high-value skills.
+    """
+    role_skills = MARKET_SKILLS.get(predicted_role, [])
+    
+    if not role_skills:
+        return {"matched": [], "missing": []}
+        
+    current_lower = [s.lower() for s in current_skills]
+    matched = [s.title() for s in role_skills if s.lower() in current_lower]
+    missing = [s.title() for s in role_skills if s.lower() not in current_lower]
+    
+    return {
+        "matched": matched,
+        "missing": missing
     }

@@ -1,7 +1,7 @@
 import streamlit as st
 import tempfile
 import os
-from analyzer import extract_text_from_pdf, extract_skills, check_formatting, compute_ats_score, compute_general_score
+from analyzer import extract_text_from_pdf, extract_skills, check_formatting, compute_ats_score, compute_general_score, get_market_skill_gaps
 from ml_model import predict_job_category
 
 # ── Page Config ────────────────────────────────────────────────────────────────
@@ -110,9 +110,27 @@ if page == "📄 Upload Resume":
         with col1:
             st.markdown(f"**Extracted {len(st.session_state.skills)} Skills:**")
             st.write(", ".join(st.session_state.skills) if st.session_state.skills else "None found.")
+            
+            # Show Advanced Market Skill Gaps
+            st.markdown("---")
+            st.markdown("### 📈 Market Trends Recommender")
+            market_gaps = get_market_skill_gaps(role, st.session_state.skills)
+            
+            if market_gaps["missing"]:
+                st.warning(f"**Market Gap:** To be a competitive {role}, the market highly demands these skills which are missing from your resume:")
+                missing_html = "".join([f"<span class='skill-tag skill-miss'>{s}</span>" for s in market_gaps["missing"]])
+                st.markdown(missing_html, unsafe_allow_html=True)
+            elif market_gaps["matched"]:
+                st.success(f"**Great job!** You have all the core market skills expected for a {role}.")
+                
+            if market_gaps["matched"]:
+                st.markdown("**Matched Core Market Skills:**")
+                matched_html = "".join([f"<span class='skill-tag skill-match'>{s}</span>" for s in market_gaps["matched"]])
+                st.markdown(matched_html, unsafe_allow_html=True)
+
         with col2:
             st.markdown("**Raw Text Preview:**")
-            st.text_area("", st.session_state.resume_text[:1000] + "...", height=150, disabled=True)
+            st.text_area("", st.session_state.resume_text[:1000] + "...", height=350, disabled=True)
 
 
 # ── Page 2: Overall Health ──────────────────────────────────────────────────
