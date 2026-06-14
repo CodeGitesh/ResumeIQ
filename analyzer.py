@@ -241,3 +241,128 @@ def get_market_skill_gaps(predicted_role: str, current_skills: list) -> dict:
         "matched": matched,
         "missing": missing
     }
+
+def extract_bullet_points(text: str) -> list:
+    """
+    Extracts individual bullet points / line items from the resume.
+    Looks for lines starting with bullets, dashes, or numbered items.
+    """
+    lines = text.split("\n")
+    bullets = []
+    for line in lines:
+        cleaned = line.strip()
+        # Match lines starting with bullet chars, dashes, numbers, or that look like accomplishments
+        if cleaned and len(cleaned) > 15:  # skip very short lines (headers)
+            if re.match(r'^[\u2022\u25CF\u25CB\u25AA\u25AB\-\*\>\|]', cleaned):
+                bullets.append(re.sub(r'^[\u2022\u25CF\u25CB\u25AA\u25AB\-\*\>\|]+\s*', '', cleaned))
+            elif re.match(r'^\d+[\.\)]', cleaned):
+                bullets.append(re.sub(r'^\d+[\.\)]\s*', '', cleaned))
+            elif any(v in cleaned.lower()[:20] for v in ["developed", "managed", "created", "designed", "built", "implemented", "led", "achieved", "increased", "reduced"]):
+                bullets.append(cleaned)
+    return bullets if bullets else [line.strip() for line in lines if len(line.strip()) > 30][:10]
+
+def compute_section_scores(text: str) -> dict:
+    """
+    Evaluates each resume section individually and returns a score (0-100) per section.
+    """
+    text_lower = text.lower()
+    scores = {}
+    
+    # Contact Info
+    contacts = extract_contact_info(text)
+    contact_score = 0
+    if contacts["email"]: contact_score += 40
+    if contacts["phone"]: contact_score += 30
+    if contacts["linkedin"]: contact_score += 30
+    scores["Contact Info"] = contact_score
+    
+    # Skills
+    skills = extract_skills(text)
+    scores["Skills"] = min(100, len(skills) * 8)
+    
+    # Experience
+    exp_score = 0
+    if "experience" in text_lower or "employment" in text_lower:
+        exp_score += 40
+    action_verbs = ["achieved", "improved", "developed", "managed", "created", "led", "increased", "decreased", "resolved", "spearheaded", "architected", "optimized"]
+    found_verbs = [v for v in action_verbs if v in text_lower]
+    exp_score += min(40, len(found_verbs) * 8)
+    numbers = re.findall(r'\b\d+%\b|\$\d+', text)
+    exp_score += min(20, len(numbers) * 5)
+    scores["Experience"] = min(100, exp_score)
+    
+    # Education
+    edu_score = 0
+    if "education" in text_lower: edu_score += 50
+    edu_keywords = ["bachelor", "master", "b.tech", "m.tech", "b.e", "m.e", "ph.d", "diploma", "university", "college", "degree", "gpa", "cgpa"]
+    found_edu = [k for k in edu_keywords if k in text_lower]
+    edu_score += min(50, len(found_edu) * 10)
+    scores["Education"] = min(100, edu_score)
+    
+    # Projects
+    proj_score = 0
+    if "project" in text_lower: proj_score += 40
+    proj_keywords = ["built", "developed", "designed", "github", "deployed", "implemented"]
+    found_proj = [k for k in proj_keywords if k in text_lower]
+    proj_score += min(60, len(found_proj) * 12)
+    scores["Projects"] = min(100, proj_score)
+    
+    return scores
+
+def categorize_skills(skills: list) -> dict:
+    """
+    Groups extracted skills into categories for a radar chart.
+    """
+    categories = {
+        "Languages": {"python", "java", "c++", "c#", "javascript", "typescript", "go", "rust", "swift", "kotlin", "ruby", "php"},
+        "Frameworks": {"react", "angular", "vue", "node.js", "express", "django", "flask", "fastapi", "spring boot", "rails", "laravel"},
+        "Cloud & DevOps": {"aws", "azure", "gcp", "docker", "kubernetes", "jenkins", "ci/cd", "terraform", "linux", "bash"},
+        "Data & ML": {"machine learning", "data analysis", "artificial intelligence", "nlp", "pandas", "numpy", "scikit-learn", "tensorflow", "pytorch", "tableau", "power bi", "sql", "mysql", "postgresql", "mongodb", "redis"},
+        "Soft Skills": {"communication", "leadership", "problem solving", "teamwork", "agile", "scrum"}
+    }
+    
+    result = {}
+    for cat, cat_skills in categories.items():
+        matched = [s for s in skills if s.lower() in cat_skills]
+        max_possible = len(cat_skills)
+        result[cat] = {
+            "matched": matched,
+            "count": len(matched),
+            "score": min(100, int((len(matched) / max(1, min(5, max_possible))) * 100))
+        }
+    return result
+
+def extract_resume_features(text: str, pdf_path: str = None) -> dict:
+    """
+    Extracts numerical features from the resume for the ML ATS Score Regressor.
+    Returns a dict of features matching the model's expected input.
+    """
+    text_lower = text.lower()
+    skills = extract_skills(text)
+    issues = check_formatting(text, pdf_path)
+    
+    action_verbs = ["achieved", "improved", "developed", "managed", "created", "led",
+                    "increased", "decreased", "resolved", "spearheaded", "architected", "optimized"]
+    found_verbs = [v for v in action_verbs if v in text_lower]
+    
+    numbers = re.findall(r'\b\d+%\b|\$\d+', text)
+    
+    formatting_penalty = sum(15 if i["severity"] == "high" else 5 for i in issues)
+    
+    sections = ["experience", "education", "skills", "project", "summary", "objective"]
+    found_sections = sum(1 for s in sections if s in text_lower)
+    section_completeness = (found_sections / len(sections)) * 100
+    
+    # Keyword density: ratio of meaningful long words to total words
+    all_words = re.findall(r'\b[a-zA-Z]{4,}\b', text_lower)
+    unique_words = set(all_words)
+    keyword_density = min(100, (len(unique_words) / max(1, len(all_words))) * 100)
+    
+    return {
+        "skill_count": len(skills),
+        "keyword_density": keyword_density,
+        "action_verb_count": len(found_verbs),
+        "metrics_count": len(numbers),
+        "formatting_penalty": min(50, formatting_penalty),
+        "section_completeness": section_completeness
+    }

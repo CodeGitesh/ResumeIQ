@@ -2,3 +2,6 @@ streamlit
 PyMuPDF
 pandas
 scikit-learn
+numpy
+matplotlib
+fpdf2
