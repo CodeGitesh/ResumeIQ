@@ -63,14 +63,10 @@ def train_job_role_classifier() -> dict:
     data_path = os.path.join("data", "UpdatedResumeDataSet.csv")
 
     if not os.path.exists(data_path):
-        print(f"Downloading dataset from {dataset_url} ...")
-        ssl_ctx = ssl.create_default_context()
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
-        urllib.request.urlretrieve(dataset_url, data_path, context=ssl_ctx)
-        print("Download complete.")
+        print("Data not found locally. Please run generate_data.py to generate massive local datasets.")
+        return {"train_acc": 0, "test_acc": 0}
     else:
-        print(f"Dataset already cached at {data_path}")
+        print(f"Using local dataset at {data_path}")
 
     # --- Load & clean -----------------------------------------------------
     df = pd.read_csv(data_path)

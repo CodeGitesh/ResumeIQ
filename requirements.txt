@@ -8,3 +8,5 @@ fpdf2
 streamlit-lottie
 wordcloud
 beautifulsoup4
+requests
+certifi

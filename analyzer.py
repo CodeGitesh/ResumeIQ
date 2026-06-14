@@ -31,13 +31,20 @@ MARKET_SKILLS = {
 }
 
 def extract_text_from_pdf(pdf_path: str) -> str:
-    """Extracts raw text from a PDF document."""
+    """
+    Extracts plain text from a PDF file using PyMuPDF.
+    Includes basic error handling for corrupted or invalid PDFs.
+    """
+    text = ""
     try:
         doc = fitz.open(pdf_path)
-        text = "\n".join([page.get_text() for page in doc])
-        return text
+        for page in doc:
+            text += page.get_text()
+        doc.close()
     except Exception as e:
-        raise Exception(f"Error reading PDF: {str(e)}")
+        print(f"Error parsing PDF: {e}")
+        return "ERROR_INVALID_PDF: The uploaded file could not be parsed."
+    return text
 
 def extract_contact_info(text: str) -> dict:
     """Uses regex to find standard contact information."""
