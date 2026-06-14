@@ -2,7 +2,7 @@ import streamlit as st
 import json
 import os
 import re
-from nltk.stem import PorterStemmer
+from text_utils import preprocess, identity_tokenizer
 from rank_bm25 import BM25Okapi
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -66,10 +66,8 @@ query = st.text_input("Enter search query (e.g., 'Python Backend Developer AWS')
 if st.button("Search", type="primary") and query.strip():
     start_time = time.time()
     
-    # 1. Tokenize & Stem Query
-    stemmer = PorterStemmer()
-    query_words = re.findall(r'\b[a-z0-9]+\b', query.lower())
-    query_stems = [stemmer.stem(w) for w in query_words if len(w) > 2]
+    # 1. Tokenize & Stem Query using Unified Preprocessor
+    query_stems = preprocess(query)
     
     # 2. Boolean OR Retrieval from Inverted Index
     candidate_doc_ids = set()
@@ -89,10 +87,19 @@ if st.button("Search", type="primary") and query.strip():
         # 3. Ranking Comparisons
         docs_texts = [str(doc.get('description', '')) for doc in candidate_docs]
         
+        # Preprocess query and corpus once
+        processed_query = preprocess(query)
+        processed_corpus = [preprocess(text) for text in docs_texts]
+        
         # --- TF-IDF ---
         tfidf_start = time.time()
-        vectorizer = TfidfVectorizer(stop_words='english', sublinear_tf=True)
-        tfidf_matrix = vectorizer.fit_transform(docs_texts + [query])
+        vectorizer = TfidfVectorizer(
+            tokenizer=identity_tokenizer,
+            preprocessor=identity_tokenizer,
+            token_pattern=None,
+            sublinear_tf=True
+        )
+        tfidf_matrix = vectorizer.fit_transform(processed_corpus + [processed_query])
         query_vec = tfidf_matrix[-1]
         doc_vecs = tfidf_matrix[:-1]
         tfidf_scores = cosine_similarity(query_vec, doc_vecs).flatten()
@@ -100,10 +107,8 @@ if st.button("Search", type="primary") and query.strip():
         
         # --- BM25 ---
         bm25_start = time.time()
-        tokenized_corpus = [doc.lower().split(" ") for doc in docs_texts]
-        bm25 = BM25Okapi(tokenized_corpus)
-        tokenized_query = query.lower().split(" ")
-        bm25_scores = bm25.get_scores(tokenized_query)
+        bm25 = BM25Okapi(processed_corpus)
+        bm25_scores = bm25.get_scores(processed_query)
         bm25_time = time.time() - bm25_start
         
         st.markdown("---")

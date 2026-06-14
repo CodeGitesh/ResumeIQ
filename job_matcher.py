@@ -3,6 +3,7 @@ import pandas as pd
 import os
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from text_utils import preprocess, identity_tokenizer
 
 def load_jobs_corpus():
     path = "data/real_jobs_corpus.csv"
@@ -23,13 +24,17 @@ def recommend_jobs(resume_text: str, top_n: int = 10) -> list:
     job_texts = [job["description"] for job in jobs]
     corpus = job_texts + [resume_text]
 
+    # Preprocess corpus with unified tokenizer
+    processed_corpus = [preprocess(text) for text in corpus]
+
     vectorizer = TfidfVectorizer(
-        stop_words='english',
+        tokenizer=identity_tokenizer,
+        preprocessor=identity_tokenizer,
+        token_pattern=None,
         max_features=5000,
-        ngram_range=(1, 2),
         sublinear_tf=True
     )
-    tfidf_matrix = vectorizer.fit_transform(corpus)
+    tfidf_matrix = vectorizer.fit_transform(processed_corpus)
 
     resume_vector = tfidf_matrix[-1]
     job_vectors   = tfidf_matrix[:-1]

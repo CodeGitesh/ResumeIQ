@@ -1,8 +1,7 @@
 import pandas as pd
-import re
 import json
 from collections import defaultdict
-from nltk.stem import PorterStemmer
+from text_utils import preprocess
 
 def build_inverted_index(csv_path: str):
     """
@@ -17,26 +16,18 @@ def build_inverted_index(csv_path: str):
         return
 
     inverted_index = defaultdict(list)
-    stemmer = PorterStemmer()
-    
-    # Expanded common stop words
-    stop_words = {"and", "the", "to", "of", "in", "a", "is", "for", "with", "on", 
-                  "are", "we", "you", "this", "our", "at", "as", "by", "or", "an"}
-
     for idx, row in df.iterrows():
         doc_id = row['id']
-        text = str(row['description']).lower()
+        text = str(row['description'])
         
-        # Tokenize (extract alphanumeric words)
-        words = re.findall(r'\b[a-z0-9]+\b', text)
+        # Tokenize using unified preprocessor
+        tokens = preprocess(text)
         
         # Remove duplicates per document so doc_id only appears once per term
-        unique_words = set(words)
+        unique_tokens = set(tokens)
         
-        for word in unique_words:
-            if word not in stop_words and len(word) > 2:
-                stemmed_word = stemmer.stem(word)
-                inverted_index[stemmed_word].append(doc_id)
+        for token in unique_tokens:
+            inverted_index[token].append(doc_id)
 
     print(f"\nSuccessfully indexed {len(df)} documents.")
     print(f"Total unique terms in index: {len(inverted_index)}\n")
