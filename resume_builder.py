@@ -241,48 +241,62 @@ def generate_enhanced_pdf(
     contact_line = _safe_text(" | ".join(contact_parts)) if contact_parts else ""
 
     # -- Title (Name) ----------------------------------------------------------
-    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_font("Helvetica", "B", 24)
     pdf.set_text_color(*BLACK)
-    pdf.cell(0, 10, name, new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.cell(0, 10, name.upper(), new_x="LMARGIN", new_y="NEXT", align="C")
 
     if contact_line:
         pdf.set_font("Helvetica", "", 10)
         pdf.cell(0, 6, contact_line, new_x="LMARGIN", new_y="NEXT", align="C")
 
     if predicted_role:
-        pdf.set_font("Helvetica", "I", 10)
-        pdf.set_text_color(100, 100, 100)
-        pdf.cell(
-            0, 6,
-            _safe_text(f"Target Role: {predicted_role}"),
-            new_x="LMARGIN", new_y="NEXT", align="C",
-        )
+        pdf.set_font("Helvetica", "I", 11)
+        pdf.set_text_color(80, 80, 80)
+        pdf.cell(0, 6, _safe_text(predicted_role), new_x="LMARGIN", new_y="NEXT", align="C")
         pdf.set_text_color(*BLACK)
 
+    pdf.ln(2)
+    # Header separator line
+    pdf.set_draw_color(*BLACK)
+    pdf.set_line_width(0.5)
+    pdf.line(15, pdf.get_y(), 195, pdf.get_y())
     pdf.ln(4)
 
     # -- Helper: add a section -------------------------------------------------
     def _add_section(title: str, body: str) -> None:
-        """Render a section header + body text block."""
+        """Render a section header + body text block with proper ATS formatting."""
         if not body.strip():
             return
 
-        pdf.set_font("Helvetica", "B", 13)
-        pdf.set_text_color(*DARK_BLUE)
-        pdf.cell(0, 8, _safe_text(title), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.set_text_color(*BLACK)
+        pdf.cell(0, 7, _safe_text(title.upper()), new_x="LMARGIN", new_y="NEXT")
 
         # Thin separator line
-        pdf.set_draw_color(*DARK_BLUE)
-        pdf.set_line_width(0.4)
-        x = pdf.get_x()
-        y = pdf.get_y()
-        pdf.line(x, y, x + 180, y)
-        pdf.ln(3)
+        pdf.set_draw_color(*BLACK)
+        pdf.set_line_width(0.2)
+        pdf.line(15, pdf.get_y(), 195, pdf.get_y())
+        pdf.ln(2)
 
-        pdf.set_font("Helvetica", "", 11)
+        pdf.set_font("Helvetica", "", 10.5)
         pdf.set_text_color(*BLACK)
-        pdf.multi_cell(0, 6, _safe_text(body))
-        pdf.ln(3)
+        
+        # Parse text into bullet points and paragraphs
+        for line in body.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            
+            if line.startswith("-") or line.startswith("•") or line.startswith("*"):
+                # Clean bullet
+                clean_line = _safe_text(line.lstrip("-•* ").strip())
+                pdf.set_x(20) # Indent for bullet
+                pdf.multi_cell(0, 5, "\x95  " + clean_line) # \x95 is FPDF bullet
+            else:
+                pdf.set_x(15)
+                pdf.multi_cell(0, 5.5, _safe_text(line))
+                
+        pdf.ln(4)
 
     # -- Professional Summary --------------------------------------------------
     summary_answer = ""
@@ -341,6 +355,88 @@ def generate_enhanced_pdf(
     _add_section("Certifications & Projects", combined)
 
     # -- Write PDF -------------------------------------------------------------
+    output_dir = os.path.dirname(output_path)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+
+    pdf.output(output_path)
+    return os.path.abspath(output_path)
+
+# ---------------------------------------------------------------------------
+# 3. Automated Cover Letter Generator
+# ---------------------------------------------------------------------------
+
+def generate_cover_letter_pdf(
+    original_text: str,
+    skills: list[str],
+    job_title: str,
+    company: str,
+    output_path: str = "cover_letter.pdf"
+) -> str:
+    """Generate a tailored Cover Letter PDF for a specific job match."""
+    
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+    pdf.set_margins(20, 20, 20)
+    
+    BLACK = (0, 0, 0)
+    name = _safe_text(_extract_name(original_text))
+    
+    # Try to pull email and phone
+    email_match = re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", original_text)
+    phone_match = re.search(r"[\+]?[\d\s\-().]{7,15}", original_text)
+    email = email_match.group(0) if email_match else "your.email@example.com"
+    phone = phone_match.group(0).strip() if phone_match else "(555) 555-5555"
+
+    # Header
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.set_text_color(*BLACK)
+    pdf.cell(0, 10, name, new_x="LMARGIN", new_y="NEXT", align="L")
+    
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(0, 5, _safe_text(email), new_x="LMARGIN", new_y="NEXT", align="L")
+    pdf.cell(0, 5, _safe_text(phone), new_x="LMARGIN", new_y="NEXT", align="L")
+    pdf.ln(10)
+    
+    import datetime
+    today = datetime.datetime.now().strftime("%B %d, %Y")
+    pdf.cell(0, 5, today, new_x="LMARGIN", new_y="NEXT", align="L")
+    pdf.ln(10)
+    
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 5, _safe_text(f"Hiring Manager"), new_x="LMARGIN", new_y="NEXT", align="L")
+    pdf.cell(0, 5, _safe_text(company), new_x="LMARGIN", new_y="NEXT", align="L")
+    pdf.ln(10)
+    
+    # Body
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 5, "Dear Hiring Manager,", new_x="LMARGIN", new_y="NEXT", align="L")
+    pdf.ln(5)
+    
+    p1 = f"I am writing to express my strong interest in the {job_title} position at {company}. With my background in technology and a proven track record of delivering results, I am confident in my ability to make an immediate impact on your team."
+    pdf.multi_cell(0, 6, _safe_text(p1))
+    pdf.ln(5)
+    
+    top_skills = ", ".join(skills[:5]) if skills else "software development, problem-solving, and continuous learning"
+    p2 = f"Throughout my career, I have developed expertise in {top_skills}. My experience aligns closely with the responsibilities of the {job_title} role, particularly my ability to adapt to new technologies and drive successful project outcomes."
+    pdf.multi_cell(0, 6, _safe_text(p2))
+    pdf.ln(5)
+    
+    p3 = f"What draws me to {company} is your commitment to innovation and excellence. I am excited about the opportunity to bring my technical skills and collaborative mindset to your engineering organization, and to contribute to the high-quality products your team builds."
+    pdf.multi_cell(0, 6, _safe_text(p3))
+    pdf.ln(5)
+    
+    p4 = "I would welcome the opportunity to discuss how my experience and vision align with the goals of your team. Thank you for considering my application. I have attached my resume for your review and look forward to the possibility of speaking with you soon."
+    pdf.multi_cell(0, 6, _safe_text(p4))
+    pdf.ln(10)
+    
+    pdf.cell(0, 6, "Sincerely,", new_x="LMARGIN", new_y="NEXT", align="L")
+    pdf.ln(8)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 6, name, new_x="LMARGIN", new_y="NEXT", align="L")
+    
+    # Write PDF
     output_dir = os.path.dirname(output_path)
     if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)

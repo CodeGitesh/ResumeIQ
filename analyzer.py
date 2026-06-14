@@ -228,10 +228,17 @@ def get_market_skill_gaps(predicted_role: str, current_skills: list) -> dict:
     """
     Compares the user's skills against the MARKET_SKILLS dictionary to find missing high-value skills.
     """
+    # Try exact match, otherwise try to find a substring match, otherwise fallback to generic tech
     role_skills = MARKET_SKILLS.get(predicted_role, [])
-    
     if not role_skills:
-        return {"matched": [], "missing": []}
+        for k, v in MARKET_SKILLS.items():
+            if k.lower() in predicted_role.lower() or predicted_role.lower() in k.lower():
+                role_skills = v
+                break
+                
+    if not role_skills:
+        # Generic Software/Tech fallback
+        role_skills = ["python", "sql", "git", "aws", "docker", "agile", "communication", "problem solving", "ci/cd", "javascript", "react", "cloud"]
         
     current_lower = [s.lower() for s in current_skills]
     matched = [s.title() for s in role_skills if s.lower() in current_lower]
@@ -357,7 +364,7 @@ def extract_resume_features(text: str, pdf_path: str = None) -> dict:
     all_words = re.findall(r'\b[a-zA-Z]{4,}\b', text_lower)
     unique_words = set(all_words)
     keyword_density = min(100, (len(unique_words) / max(1, len(all_words))) * 100)
-    
+    # Final dictionary
     return {
         "skill_count": len(skills),
         "keyword_density": keyword_density,
@@ -366,3 +373,46 @@ def extract_resume_features(text: str, pdf_path: str = None) -> dict:
         "formatting_penalty": min(50, formatting_penalty),
         "section_completeness": section_completeness
     }
+
+def calculate_yoe(text: str) -> float:
+    """
+    State-of-the-Art Estimator for Years of Experience (YoE)
+    Extracts date ranges from resume text and calculates total duration.
+    """
+    import datetime
+    
+    # Common date formats: 
+    # "Jan 2019 - Dec 2021", "2015 to 2018", "05/2020 - Present"
+    date_range_pattern = r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)?[a-z]*\s*\d{4}|\d{1,2}/\d{4})\s*(?:-|to|–)\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)?[a-z]*\s*\d{4}|\d{1,2}/\d{4}|Present|Current|Now)'
+    
+    matches = re.findall(date_range_pattern, text, re.IGNORECASE)
+    
+    total_months = 0
+    current_year = datetime.datetime.now().year
+    
+    for start_str, end_str in matches:
+        try:
+            # Extract year from start
+            start_year_match = re.search(r'\d{4}', start_str)
+            if not start_year_match: continue
+            start_year = int(start_year_match.group())
+            
+            # Extract year from end
+            if end_str.lower() in ['present', 'current', 'now']:
+                end_year = current_year
+            else:
+                end_year_match = re.search(r'\d{4}', end_str)
+                if not end_year_match: continue
+                end_year = int(end_year_match.group())
+                
+            # Basic sanity check
+            if 1950 <= start_year <= current_year and start_year <= end_year <= current_year + 5:
+                # Add 1 to be inclusive (e.g. 2020-2020 is 1 year)
+                total_months += (end_year - start_year) * 12 + 12
+        except Exception:
+            continue
+            
+    # Convert months to years
+    total_years = round(total_months / 12, 1)
+    # Cap at realistic number to avoid bad parse blowups
+    return min(total_years, 35.0)
