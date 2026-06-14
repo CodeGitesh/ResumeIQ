@@ -1,6 +1,7 @@
 import pandas as pd
 import re
 from collections import defaultdict
+from nltk.stem import PorterStemmer
 
 def build_inverted_index(csv_path: str):
     """
@@ -15,9 +16,11 @@ def build_inverted_index(csv_path: str):
         return
 
     inverted_index = defaultdict(list)
+    stemmer = PorterStemmer()
     
-    # Common stop words to filter out
-    stop_words = {"and", "the", "to", "of", "in", "a", "is", "for", "with", "on", "are", "we", "you", "this", "our"}
+    # Expanded common stop words
+    stop_words = {"and", "the", "to", "of", "in", "a", "is", "for", "with", "on", 
+                  "are", "we", "you", "this", "our", "at", "as", "by", "or", "an"}
 
     for idx, row in df.iterrows():
         doc_id = row['id']
@@ -31,7 +34,8 @@ def build_inverted_index(csv_path: str):
         
         for word in unique_words:
             if word not in stop_words and len(word) > 2:
-                inverted_index[word].append(doc_id)
+                stemmed_word = stemmer.stem(word)
+                inverted_index[stemmed_word].append(doc_id)
 
     print(f"\nSuccessfully indexed {len(df)} documents.")
     print(f"Total unique terms in index: {len(inverted_index)}\n")
@@ -50,4 +54,4 @@ def build_inverted_index(csv_path: str):
         print(f"Term: '{term:<15}' -> Docs: [{docs_str}] (Total: {len(docs)})")
 
 if __name__ == "__main__":
-    build_inverted_index("data/indian_jobs_corpus.csv")
+    build_inverted_index("data/real_jobs_corpus.csv")

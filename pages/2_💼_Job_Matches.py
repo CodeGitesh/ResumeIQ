@@ -75,9 +75,10 @@ else:
         for job in matches:
             st.markdown(f"""
             <div class='job-card'>
-                <div class='match-score'>{job['match_score']}% Match</div>
+                <div class='match-score'>{job['match_score']}% Match <span style='font-size: 14px; font-weight: normal; color: #64748B;'>({job.get('match_label', 'Good')})</span></div>
                 <h3 class='job-title'>{job['title']}</h3>
                 <h5 class='job-meta'>{job['company']} • {job['location']} • {job['salary']}</h5>
+                <p style='margin: 0 0 10px 0; font-size: 12px; font-weight: bold; color: #3B82F6;'>📊 P95 Scaled • Top {100 - job.get('percentile', 0)}% Match in Corpus</p>
                 <p class='job-desc'>{job['description']}</p>
             </div>
             """, unsafe_allow_html=True)

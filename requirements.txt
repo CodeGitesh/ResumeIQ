@@ -10,3 +10,4 @@ wordcloud
 beautifulsoup4
 requests
 certifi
+nltk
