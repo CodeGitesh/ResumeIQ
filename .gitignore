@@ -5,10 +5,10 @@ __pycache__/
 .venv/
 venv/
 env/
+*.db
 
-# Data & Models (These are downloaded/generated dynamically)
-data/
-models/
+# Data & Models
+# (Now tracked so the deployed site has access to the corpora and pre-trained models)
 
 # macOS
 .DS_Store
