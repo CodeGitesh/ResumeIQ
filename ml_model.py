@@ -118,6 +118,9 @@ def predict_job_category(resume_text: str) -> dict:
     -------
     dict  {"category": str, "confidence": float}
     """
+    if not os.path.exists(os.path.join("models", "tfidf_vectorizer.pkl")) or not os.path.exists(os.path.join("models", "resume_classifier.pkl")):
+        train_job_role_classifier()
+        
     with open(os.path.join("models", "tfidf_vectorizer.pkl"), "rb") as f:
         tfidf = pickle.load(f)
     with open(os.path.join("models", "resume_classifier.pkl"), "rb") as f:
@@ -239,6 +242,9 @@ def predict_ats_score(features_dict: dict) -> dict:
     -------
     dict  {"score": float, "confidence": float}
     """
+    if not os.path.exists(os.path.join("models", "ats_regressor.pkl")):
+        train_ats_regressor()
+        
     with open(os.path.join("models", "ats_regressor.pkl"), "rb") as f:
         model = pickle.load(f)
 
@@ -440,6 +446,9 @@ def classify_bullets(bullet_list: list) -> list:
     -------
     list[dict]  Each dict: {"text": str, "label": "Strong"/"Weak", "confidence": float}
     """
+    if not os.path.exists(os.path.join("models", "bullet_vectorizer.pkl")) or not os.path.exists(os.path.join("models", "bullet_classifier.pkl")):
+        train_bullet_classifier()
+
     with open(os.path.join("models", "bullet_vectorizer.pkl"), "rb") as f:
         tfidf = pickle.load(f)
     with open(os.path.join("models", "bullet_classifier.pkl"), "rb") as f:
