@@ -155,6 +155,18 @@ with col1:
 with col2:
     if lottie_ai: st_lottie(lottie_ai, height=120, key="ai_brain")
 
+if st.session_state.resume_text:
+    if st.button("🗑️ Clear & Upload New Resume", type="secondary"):
+        keys_to_clear = [
+            "resume_text", "resume_path", "skills", "issues", "health_data", 
+            "predicted_role", "bullet_results", "market_gaps", "ats_ml_score", 
+            "section_scores", "yoe", "interview_qs"
+        ]
+        for key in keys_to_clear:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.rerun()
+
 if uploaded_file and not st.session_state.resume_text:
     if st.button("Generate Full Report", use_container_width=True, type="primary"):
         with st.status("🧠 Analyzing your resume...", expanded=True) as status:
