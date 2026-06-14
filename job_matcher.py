@@ -36,16 +36,11 @@ def recommend_jobs(resume_text: str, top_n: int = 4) -> list:
 
     # Compute similarity between resume and all jobs
     similarities = cosine_similarity(resume_vector, job_vectors).flatten()
-    
-    # Mathematical Scaling: Max-Relative Normalization
-    # Since cosine similarities are typically low (0.05 - 0.25), dividing by P95 
-    # compresses all top results to 99%. Instead, we scale relative to the absolute best match.
-    max_score = np.max(similarities)
-    if max_score < 0.05:
-        max_score = 0.05
-        
-    # The #1 best matching job gets a 94% score, and the rest scale down proportionally.
-    normalized = np.clip((similarities / max_score) * 94, 0, 99).astype(int)
+    # Mathematical Scaling: P95 Normalization - Honest Scaling
+    p95 = np.percentile(similarities, 95)
+    if p95 < 0.01:
+        p95 = 0.01
+    normalized = np.clip((similarities / p95) * 100, 0, 99).astype(int)
 
     # Rank jobs based on similarity
     ranked_indices = np.argsort(normalized)[::-1]

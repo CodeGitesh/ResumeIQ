@@ -17,7 +17,12 @@ from analyzer import (
     extract_bullet_points, compute_section_scores, categorize_skills,
     extract_resume_features, calculate_yoe
 )
-from ml_model import predict_job_category, predict_ats_score, classify_bullets
+from ml_model import (
+    train_all_models,
+    predict_job_category,
+    classify_bullets,
+    compute_health_score
+)
 from resume_builder import generate_interview_questions, generate_enhanced_pdf
 from database import insert_candidate
 
@@ -201,22 +206,19 @@ if uploaded_file and not st.session_state.resume_text:
             gaps = get_market_skill_gaps(st.session_state.predicted_role, skills)
             st.session_state.market_gaps = gaps
             
-            # Role-Specific ATS Score Adjuster
+            # Resume Health Score
             features = extract_resume_features(text, tmp_path)
-            base_ats = predict_ats_score(features)["score"]
-            if len(gaps["matched"]) + len(gaps["missing"]) > 0:
-                alignment_ratio = len(gaps["matched"]) / (len(gaps["matched"]) + len(gaps["missing"]))
-                # Weight: 50% Base Resume Quality, 50% Exact Skill Alignment
-                final_ats = (base_ats * 0.5) + (alignment_ratio * 100 * 0.5)
-            else:
-                final_ats = base_ats
+            raw_features = {
+                "skill_count":        len(st.session_state.skills or []),
+                "action_verb_count":  features.get("action_verb_count", 0),
+                "metrics_count":      features.get("metrics_count", 0),
+                "section_count":      features.get("section_completeness", 0) // 25,
+                "formatting_penalty": len([i for i in (st.session_state.issues or []) if i.get("severity") == "high"]),
+            }
+            health_result = compute_health_score(raw_features)
+            base_ats = health_result["total_score"]
+            st.session_state.ats_ml_score = {"score": base_ats, "grade": health_result["grade"]}
                 
-            # Apply Generous ATS Curve (Most commercial parsers grade between 70-95)
-            # This boosts the score while maintaining the relative distribution
-            curved_ats = min(100, (final_ats * 0.6) + 40)
-            
-            st.session_state.ats_ml_score = {"score": int(curved_ats)}
-            
             status.update(label="✅ Full Report Generated!", state="complete", expanded=False)
             st.rerun()
 
@@ -244,8 +246,9 @@ if st.session_state.resume_text:
     salary = estimate_salary(role, ats)
     st.markdown(f"""
     <div class='info-card'>
+        <h1 style='color: #0369A1; font-size: 2.5rem; margin-bottom: 5px;'>Resume Health Score</h1>
+        <p style='color: #0C4A6E; font-size: 1.1rem; margin-top: 0;'>A comprehensive analysis of your resume's impact and readability.</p>
         <h3 style='margin-top:0; color:#0369A1;'>Estimated Market Value: {salary}</h3>
-        <p style='color:#0C4A6E; margin-bottom:0;'>Based on your ML-predicted role (<b>{role}</b>) and ATS competitiveness score.</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -315,7 +318,7 @@ if st.session_state.resume_text:
     if competencies_score > 75:
         xai_bullets.append("✅ **Market Aligned:** You possess a high density of the hard skills expected for this specific role, boosting your Competencies score.")
     else:
-        xai_bullets.append("⚠️ **Skill Gap Penalty:** Your resume lacks critical skills required for the current market, heavily weighing down your ATS prediction.")
+        xai_bullets.append("⚠️ **Skill Gap Penalty:** Your resume lacks critical skills required for the current market, heavily weighing down your Resume Health Score.")
 
     for insight in xai_bullets:
         st.markdown(insight)
@@ -341,7 +344,7 @@ if st.session_state.resume_text:
         st.markdown("### 📈 Market Gap & Skills Improvement")
         gaps = st.session_state.market_gaps
         if gaps["missing"]:
-            st.error("⚠️ **Missing In-Demand Skills:** Add these to boost your ATS score for this role.")
+            st.error("⚠️ **Missing In-Demand Skills:** Add these to boost your Resume Health Score for this role.")
             missing_html = "".join([f"<span class='skill-tag skill-miss'>{s}</span>" for s in gaps["missing"]])
             st.markdown(missing_html, unsafe_allow_html=True)
         else:

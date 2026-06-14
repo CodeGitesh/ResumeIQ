@@ -58,7 +58,7 @@ else:
     st.markdown(f"""
     <div style='background:#F0F9FF; border:1px solid #BAE6FD; padding:20px; border-radius:8px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;'>
         <div>
-            <h3 style='margin:0; color:#0369A1;'>Your Role-Specific ATS Score:</h3>
+            <h3 style='margin:0; color:#0369A1;'>Your Resume Health Score:</h3>
             <p style='margin:0; color:#0C4A6E;'>This dictates your competitiveness for the roles below.</p>
         </div>
         <h1 style='margin:0; color:{"#10B981" if ats >= 70 else "#F59E0B" if ats >= 40 else "#EF4444"};'>{ats}/100</h1>

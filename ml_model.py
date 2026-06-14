@@ -132,137 +132,38 @@ def predict_job_category(resume_text: str) -> dict:
 
 
 # ===========================================================================================
-# MODEL 2: ATS Score Regressor (RandomForestRegressor)
+# MODEL 2: Health Score Calculation
 # ===========================================================================================
 
-def _generate_ats_data(n_samples: int = 2000, seed: int = 42) -> pd.DataFrame:
-    """Generate synthetic ATS scoring data."""
-    rng = np.random.RandomState(seed)
-
-    skill_count = rng.randint(0, 31, size=n_samples)
-    keyword_density = rng.uniform(0, 100, size=n_samples)
-    action_verb_count = rng.randint(0, 16, size=n_samples)
-    metrics_count = rng.randint(0, 11, size=n_samples)
-    formatting_penalty = rng.uniform(0, 50, size=n_samples)
-    section_completeness = rng.uniform(0, 100, size=n_samples)
-
-    # Weighted formula
-    ats_score = (
-        (skill_count / 30) * 35
-        + (keyword_density / 100) * 25
-        + (action_verb_count / 15) * 15
-        + (metrics_count / 10) * 10
-        + (section_completeness / 100) * 15
-        - formatting_penalty * 0.5
-        + rng.normal(0, 3, size=n_samples)
+def compute_health_score(features: dict) -> dict:
+    skill_score    = min(features.get("skill_count", 0) / 20 * 100, 100)
+    verb_score     = min(features.get("action_verb_count", 0) / 10 * 100, 100)
+    metrics_score  = min(features.get("metrics_count", 0) / 5 * 100, 100)
+    section_score  = (features.get("section_count", 0) / 4) * 100
+    format_score   = max(100 - features.get("formatting_penalty", 0) * 15, 0)
+    
+    total = (
+        skill_score   * 0.30 +
+        verb_score    * 0.20 +
+        metrics_score * 0.20 +
+        section_score * 0.15 +
+        format_score  * 0.15
     )
-    ats_score = np.clip(ats_score, 0, 100)
-
-    return pd.DataFrame({
-        "skill_count": skill_count,
-        "keyword_density": keyword_density,
-        "action_verb_count": action_verb_count,
-        "metrics_count": metrics_count,
-        "formatting_penalty": formatting_penalty,
-        "section_completeness": section_completeness,
-        "ats_score": ats_score,
-    })
-
-
-def train_ats_regressor() -> dict:
-    """
-    Train a RandomForestRegressor on synthetic ATS feature data and save to disk.
-
-    Returns a dict with train/test RMSE and R² scores.
-    """
-    print("=" * 70)
-    print("MODEL 2: ATS Score Regressor (RandomForestRegressor)")
-    print("=" * 70)
-
-    df = _generate_ats_data(n_samples=2000)
-    print(f"Synthetic dataset shape: {df.shape}")
-
-    feature_cols = [
-        "skill_count",
-        "keyword_density",
-        "action_verb_count",
-        "metrics_count",
-        "formatting_penalty",
-        "section_completeness",
-    ]
-    X = df[feature_cols].values
-    y = df["ats_score"].values
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
-
-    model = RandomForestRegressor(
-        n_estimators=100, max_depth=10, random_state=42
-    )
-    model.fit(X_train, y_train)
-
-    train_rmse = float(np.sqrt(mean_squared_error(y_train, model.predict(X_train))))
-    test_rmse = float(np.sqrt(mean_squared_error(y_test, model.predict(X_test))))
-    train_r2 = float(model.score(X_train, y_train))
-    test_r2 = float(model.score(X_test, y_test))
-
-    print(f"Train RMSE: {train_rmse:.4f}  |  R²: {train_r2:.4f}")
-    print(f"Test  RMSE: {test_rmse:.4f}  |  R²: {test_r2:.4f}")
-
-    os.makedirs("models", exist_ok=True)
-    with open(os.path.join("models", "ats_regressor.pkl"), "wb") as f:
-        pickle.dump(model, f)
-
-    print("Saved models/ats_regressor.pkl")
-    print()
+    total = int(round(total))
+    grade = "A" if total >= 80 else "B" if total >= 65 else "C" if total >= 50 else "D"
     return {
-        "train_rmse": train_rmse,
-        "test_rmse": test_rmse,
-        "train_r2": train_r2,
-        "test_r2": test_r2,
+        "total_score": total,
+        "grade": grade,
+        "breakdown": {
+            "Skills":      int(skill_score),
+            "Action Verbs":int(verb_score),
+            "Metrics":     int(metrics_score),
+            "Sections":    int(section_score),
+            "Formatting":  int(format_score),
+        }
     }
 
 
-def predict_ats_score(features_dict: dict) -> dict:
-    """
-    Predict the ATS compatibility score given a feature dictionary.
-
-    Parameters
-    ----------
-    features_dict : dict
-        Keys: skill_count, keyword_density, action_verb_count,
-              metrics_count, formatting_penalty, section_completeness
-
-    Returns
-    -------
-    dict  {"score": float, "confidence": float}
-    """
-    if not os.path.exists(os.path.join("models", "ats_regressor.pkl")):
-        train_ats_regressor()
-        
-    with open(os.path.join("models", "ats_regressor.pkl"), "rb") as f:
-        model = pickle.load(f)
-
-    feature_order = [
-        "skill_count",
-        "keyword_density",
-        "action_verb_count",
-        "metrics_count",
-        "formatting_penalty",
-        "section_completeness",
-    ]
-    row = np.array([[features_dict[k] for k in feature_order]])
-    prediction = float(model.predict(row)[0])
-    prediction = float(np.clip(prediction, 0, 100))
-
-    # Confidence: use the std-dev across individual tree predictions
-    tree_preds = np.array([t.predict(row)[0] for t in model.estimators_])
-    std = float(np.std(tree_preds))
-    # Map std → confidence  (lower spread = higher confidence)
-    confidence = float(np.clip(1 - std / 50, 0, 1))
-
-    return {"score": round(prediction, 2), "confidence": round(confidence, 4)}
 
 
 # ===========================================================================================
@@ -477,7 +378,6 @@ def train_all_models():
     results = {}
 
     results["job_role_classifier"] = train_job_role_classifier()
-    results["ats_regressor"] = train_ats_regressor()
     results["bullet_classifier"] = train_bullet_classifier()
 
     # --- Quick smoke test --------------------------------------------------
@@ -492,18 +392,6 @@ def train_all_models():
     )
     cat_result = predict_job_category(sample_resume)
     print(f"Job category prediction: {cat_result}")
-
-    # Test 2: ATS score prediction
-    ats_features = {
-        "skill_count": 15,
-        "keyword_density": 60,
-        "action_verb_count": 8,
-        "metrics_count": 5,
-        "formatting_penalty": 10,
-        "section_completeness": 80,
-    }
-    ats_result = predict_ats_score(ats_features)
-    print(f"ATS score prediction:    {ats_result}")
 
     # Test 3: bullet point classification
     sample_bullets = [

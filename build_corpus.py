@@ -6,7 +6,7 @@ def process_datasets():
     print("Starting massive data aggregation...")
     all_jobs = []
     
-    base_path = "/Users/giteshgoyal/Desktop/Github"
+    base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
     
     # 1. Process data job posts.csv (Armenian Jobs)
     try:
@@ -36,7 +36,7 @@ def process_datasets():
                 "company": "Naukri Listed Company", # Usually Company is omitted in this specific dump or in a weird column
                 "location": str(row.get('Location', 'India')),
                 "salary": str(row.get('Job Salary', 'Not Disclosed')),
-                "description": f"Role: {row.get('Role', 'Unknown')}. Skills required: {row.get('Key Skills', '')}"
+                "description": f"{row.get('Job Title','')} {row.get('Role Category','')} {row.get('Key Skills','')} {row.get('Functional Area','')} {row.get('Industry','')} {row.get('Job Experience Required','')}"
             })
         print(f"Loaded {len(df2)} jobs from Naukri sample")
     except Exception as e:
