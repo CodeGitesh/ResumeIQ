@@ -36,23 +36,30 @@ def recommend_jobs(resume_text: str, top_n: int = 4) -> list:
 
     # Compute similarity between resume and all jobs
     similarities = cosine_similarity(resume_vector, job_vectors).flatten()
-    # Mathematical Scaling: P95 Normalization - Honest Scaling
-    p95 = np.percentile(similarities, 95)
-    if p95 < 0.01:
-        p95 = 0.01
-    normalized = np.clip((similarities / p95) * 100, 0, 99).astype(int)
 
-    # Rank jobs based on similarity
-    ranked_indices = np.argsort(normalized)[::-1]
+    # Mathematical Scaling: Percentile Rank within non-zero matches ONLY
+    non_zero_sims = similarities[similarities > 0.001]
+    
+    # Rank jobs based on absolute similarity
+    ranked_indices = np.argsort(similarities)[::-1]
     
     total_jobs = len(jobs)
     results = []
     
     for idx in ranked_indices[:top_n]:
         job_match = jobs[idx].copy()
+        raw_score = similarities[idx]
+        
+        # Percentile rank within non-zero matches only
+        if len(non_zero_sims) > 0 and raw_score > 0.001:
+            from scipy.stats import percentileofscore
+            percentile_rank = percentileofscore(non_zero_sims, raw_score)
+        else:
+            percentile_rank = 0
+            
+        score = int(percentile_rank)
         
         # Add Honest Metrics
-        score = int(normalized[idx])
         rank = np.argsort(np.argsort(-similarities))[idx] + 1
         percentile = int((1 - rank / total_jobs) * 100)
         match_label = "Excellent" if score >= 75 else "Good" if score >= 50 else "Fair"

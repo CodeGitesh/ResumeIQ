@@ -67,7 +67,7 @@ else:
     
     st.markdown("### Top Matches")
     
-    matches = recommend_jobs(st.session_state.resume_text, top_n=5)
+    matches = recommend_jobs(st.session_state.resume_text, top_n=15)
     
     if not matches:
         st.info("No matching jobs found in the database.")

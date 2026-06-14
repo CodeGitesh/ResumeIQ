@@ -3,74 +3,95 @@ import os
 import random
 
 def process_datasets():
-    print("Starting massive data aggregation...")
+    print("Starting targeted data aggregation...")
     all_jobs = []
     
     base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
     
-    # 1. Process data job posts.csv (Armenian Jobs)
-    try:
-        p1 = os.path.join(base_path, "data job posts.csv")
-        df1 = pd.read_csv(p1)
-        for _, row in df1.dropna(subset=['Title', 'JobDescription']).iterrows():
-            all_jobs.append({
-                "id": f"ARM_{random.randint(100000, 999999)}",
-                "title": str(row.get('Title', 'Unknown')),
-                "company": str(row.get('Company', 'Confidential')),
-                "location": str(row.get('Location', 'Remote')),
-                "salary": str(row.get('Salary', 'Not Disclosed')),
-                "description": str(row.get('JobDescription', '')) + " " + str(row.get('JobRequirment', ''))
-            })
-        print(f"Loaded {len(df1)} jobs from data job posts.csv")
-    except Exception as e:
-        print(f"Error reading dataset 1: {e}")
-
-    # 2. Process Naukri Jobs
+    # 1. Process Naukri Jobs (Indian dataset)
     try:
         p2 = os.path.join(base_path, "marketing_sample_for_naukri_com-jobs__20190701_20190830__30k_data.csv")
         df2 = pd.read_csv(p2)
-        for _, row in df2.dropna(subset=['Job Title', 'Key Skills']).iterrows():
+        
+        # Basic filters
+        df2 = df2.dropna(subset=['Job Title', 'Key Skills'])
+        
+        for _, row in df2.iterrows():
+            title = str(row.get('Job Title', 'Unknown'))
             all_jobs.append({
                 "id": f"NAU_{random.randint(100000, 999999)}",
-                "title": str(row.get('Job Title', 'Unknown')),
-                "company": "Naukri Listed Company", # Usually Company is omitted in this specific dump or in a weird column
+                "title": title,
+                "company": "Naukri Listed Company",
                 "location": str(row.get('Location', 'India')),
                 "salary": str(row.get('Job Salary', 'Not Disclosed')),
-                "description": f"{row.get('Job Title','')} {row.get('Role Category','')} {row.get('Key Skills','')} {row.get('Functional Area','')} {row.get('Industry','')} {row.get('Job Experience Required','')}"
+                "description": f"{title} {row.get('Role Category','')} {row.get('Key Skills','')} {row.get('Functional Area','')} {row.get('Industry','')} {row.get('Job Experience Required','')}"
             })
         print(f"Loaded {len(df2)} jobs from Naukri sample")
     except Exception as e:
-        print(f"Error reading dataset 2: {e}")
+        print(f"Error reading Naukri dataset: {e}")
 
-    # 3. Process LinkedIn Postings
+    # 2. Process LinkedIn Postings (with heavy filtering)
     try:
         p3 = os.path.join(base_path, "postings.csv")
-        # Reading only first 100k to avoid memory crash
-        df3 = pd.read_csv(p3, nrows=100000)
-        for _, row in df3.dropna(subset=['title', 'description']).iterrows():
-            all_jobs.append({
-                "id": f"LNK_{row.get('job_id', random.randint(100000, 999999))}",
-                "title": str(row.get('title', 'Unknown')),
-                "company": str(row.get('company_name', 'Confidential')),
-                "location": str(row.get('location', 'Global')),
-                "salary": str(row.get('med_salary', 'Not Disclosed')),
-                "description": str(row.get('description', ''))
-            })
-        print(f"Loaded {len(df3)} jobs from LinkedIn postings.csv")
+        chunk_iter = pd.read_csv(p3, chunksize=50000)
+        
+        linkedin_jobs = []
+        india_cities = 'Bengaluru|Mumbai|Pune|Hyderabad|Chennai|Delhi|Gurgaon|Noida|Kolkata|Ahmedabad|Remote'
+        tech_roles = 'Engineer|Developer|Analyst|ML|Data|Scientist|Architect|Programmer|Software|Frontend|Backend|Full Stack|AI'
+        
+        for chunk in chunk_iter:
+            chunk = chunk.dropna(subset=['title', 'description', 'location'])
+            
+            # India filter
+            india_mask = chunk['location'].str.contains(india_cities, case=False, na=False)
+            # Tech roles filter
+            tech_mask = chunk['title'].str.contains(tech_roles, case=False, na=False)
+            # Description length filter
+            len_mask = chunk['description'].str.len() > 200
+            
+            filtered_chunk = chunk[india_mask & tech_mask & len_mask]
+            
+            for _, row in filtered_chunk.iterrows():
+                linkedin_jobs.append({
+                    "id": f"LNK_{row.get('job_id', random.randint(100000, 999999))}",
+                    "title": str(row.get('title', 'Unknown')),
+                    "company": str(row.get('company_name', 'Confidential')),
+                    "location": str(row.get('location', 'India')),
+                    "salary": str(row.get('med_salary', 'Not Disclosed')),
+                    "description": str(row.get('description', ''))
+                })
+            
+            # Stop if we have enough to sample from
+            if len(linkedin_jobs) > 10000:
+                break
+                
+        print(f"Loaded {len(linkedin_jobs)} filtered jobs from LinkedIn")
+        all_jobs.extend(linkedin_jobs)
+        
     except Exception as e:
-        print(f"Error reading dataset 3: {e}")
+        print(f"Error reading LinkedIn dataset: {e}")
 
-    print(f"Total aggregated jobs: {len(all_jobs)}")
+    print(f"Total aggregated jobs before stratified sampling: {len(all_jobs)}")
     
-    # Shuffle and Sample 5000 jobs
-    random.shuffle(all_jobs)
-    sampled_jobs = all_jobs[:5000]
+    # 3. Stratified Sampling - Max 100 per title, Total 3000
+    df_all = pd.DataFrame(all_jobs)
+    
+    # Filter descriptions > 200 length for Naukri as well
+    df_all = df_all[df_all['description'].str.len() > 200]
+    
+    sampled_df = df_all.groupby('title').apply(
+        lambda x: x.sample(min(len(x), 100))
+    ).reset_index(drop=True)
+    
+    # Shuffle and pick exactly 3000
+    sampled_df = sampled_df.sample(frac=1).reset_index(drop=True)
+    final_corpus = sampled_df.head(3000).to_dict('records')
     
     # Save to clean corpus
     os.makedirs("data", exist_ok=True)
     out_path = "data/real_jobs_corpus.csv"
-    pd.DataFrame(sampled_jobs).to_csv(out_path, index=False)
-    print(f"Successfully saved {len(sampled_jobs)} sampled jobs to {out_path}")
+    pd.DataFrame(final_corpus).to_csv(out_path, index=False)
+    print(f"Successfully saved {len(final_corpus)} sampled jobs to {out_path}")
 
 if __name__ == "__main__":
     process_datasets()
