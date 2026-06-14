@@ -3,70 +3,79 @@ import pandas as pd
 import os
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.metrics.pairwise import cosine_similarity
 
 def load_jobs_corpus():
     path = "data/real_jobs_corpus.csv"
     if os.path.exists(path):
-        return pd.read_csv(path).to_dict('records')
+        df = pd.read_csv(path)
+        df = df[df['description'].str.len() > 50]
+        return df.to_dict('records')
     return []
 
-def recommend_jobs(resume_text: str, top_n: int = 4) -> list:
-    """
-    Uses TF-IDF and Cosine Similarity to find the best matching jobs 
-    from the massive Indian Jobs Corpus for a given resume.
-    """
+def recommend_jobs(resume_text: str, top_n: int = 10) -> list:
     if not resume_text.strip():
         return []
 
     jobs = load_jobs_corpus()
-    if not jobs: return []
+    if not jobs:
+        return []
 
-    # Prepare corpus: Job Descriptions + the Resume
     job_texts = [job["description"] for job in jobs]
     corpus = job_texts + [resume_text]
 
-    # Vectorize
-    vectorizer = TfidfVectorizer(stop_words='english', max_features=1000)
+    vectorizer = TfidfVectorizer(
+        stop_words='english',
+        max_features=5000,
+        ngram_range=(1, 2),
+        sublinear_tf=True
+    )
     tfidf_matrix = vectorizer.fit_transform(corpus)
 
-    # The resume is the last row, the jobs are the rows before it
     resume_vector = tfidf_matrix[-1]
-    job_vectors = tfidf_matrix[:-1]
+    job_vectors   = tfidf_matrix[:-1]
 
-    # Compute similarity between resume and all jobs
     similarities = cosine_similarity(resume_vector, job_vectors).flatten()
 
-    # Mathematical Scaling: Percentile Rank within non-zero matches ONLY
-    non_zero_sims = similarities[similarities > 0.001]
-    
-    # Rank jobs based on absolute similarity
+    # Percentile rank within non-zero matches only
+    # Avoids P95 collapse when 80%+ jobs are unrelated to resume
+    nonzero_sims = similarities[similarities > 0.001]
+
+    # To prevent clustering at 99%, we use Baseline Max-Relative Scaling.
+    # We find the top score. If the top score is garbage (<0.15), we use 0.15 as the baseline 
+    # to prevent a terrible 0.04 match from inflating to 95%.
+    max_raw = similarities.max()
+    baseline = max(max_raw, 0.15)
+
     ranked_indices = np.argsort(similarities)[::-1]
-    
-    total_jobs = len(jobs)
+    total_jobs     = len(jobs)
+
     results = []
-    
-    for idx in ranked_indices[:top_n]:
+    for rank_pos, idx in enumerate(ranked_indices[:top_n]):
+        raw       = float(similarities[idx])
         job_match = jobs[idx].copy()
-        raw_score = similarities[idx]
+
+        # Scale relative to the baseline. Top job gets ~96%.
+        scaled_score = int((raw / baseline) * 96)
         
-        # Percentile rank within non-zero matches only
-        if len(non_zero_sims) > 0 and raw_score > 0.001:
-            from scipy.stats import percentileofscore
-            percentile_rank = percentileofscore(non_zero_sims, raw_score)
-        else:
-            percentile_rank = 0
-            
-        score = int(percentile_rank)
-        
-        # Add Honest Metrics
-        rank = np.argsort(np.argsort(-similarities))[idx] + 1
-        percentile = int((1 - rank / total_jobs) * 100)
-        match_label = "Excellent" if score >= 75 else "Good" if score >= 50 else "Fair"
-        
-        job_match["match_score"] = score
+        # Cap at 99 and floor at 0
+        final_score = min(max(scaled_score, 0), 99)
+
+        corpus_rank = rank_pos + 1
+        corpus_pct  = int((1 - corpus_rank / total_jobs) * 100)
+
+        match_label = (
+            "Excellent" if final_score >= 80 else
+            "Good"      if final_score >= 50 else
+            "Fair"
+        )
+
+        job_match["match_score"] = final_score
         job_match["match_label"] = match_label
-        job_match["percentile"] = percentile
+        job_match["percentile"]  = corpus_pct
+        job_match["raw_score"]   = round(raw, 5)
+        job_match["pool_size"]   = len(nonzero_sims)
+        job_match["corpus_p95"]  = round(float(np.percentile(similarities, 95)), 5)
+
         results.append(job_match)
-        
+
     return results
